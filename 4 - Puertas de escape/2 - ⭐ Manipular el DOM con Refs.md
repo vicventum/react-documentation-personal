@@ -1,5 +1,3 @@
-# Manipular el DOM con Refs
-
 React automáticamente actualiza el [DOM](https://developer.mozilla.org/es/docs/Web/API/Document_Object_Model/Introduction) para que coincida con tu salida de renderizado, por lo que tus componentes no necesitarán manipularlo con frecuencia. Sin embargo, **a veces es posible que necesites acceder a los elementos del DOM gestionados por React**, por ejemplo, enfocar un nodo, desplazarse hasta él, o medir su tamaño y posición. **No hay una forma integrada para hacer ese tipo de cosas en React, por lo que necesitarás una _ref_ al nodo DOM**.
 
 ### Aprenderás
@@ -443,13 +441,15 @@ En React, cada actualización está dividida en [dos fases](https://es.react.dev
 - Durante el **renderizado,** React llama a tus componentes para averiguar que debería estar en la pantalla.
 - Durante la **confirmación,** React aplica los cambios a el DOM.
 
-**En general, [no quieres](https://es.react.dev/learn/referencing-values-with-refs#best-practices-for-refs) acceder a las refs durante el renderizado**. Eso va también para las refs que tienen nodos DOM. Durante el primer renderizado, **los nodos DOM aún no han sido creados, entonces `ref.current` será `null`**. Y durante el renderizado de actualizaciones, los nodos DOM aún no se han actualizado. Es muy temprano para leerlos.
+**En general, [no quieres](https://es.react.dev/learn/referencing-values-with-refs#best-practices-for-refs) acceder a las refs durante el renderizado**. Eso va también para las refs que tienen nodos DOM. **Durante el primer renderizado, los nodos DOM aún no han sido creados, entonces `ref.current` será `null`**. Y durante el renderizado de actualizaciones, los nodos DOM aún no se han actualizado. Es muy temprano para leerlos.
 
-React establece `ref.current` durante la confirmación. Antes de actualizar el DOM, React establece los valores afectados de `ref.current` a `null`. Después de actualizar el DOM, React inmediatamente los establece en los nodos DOM correspondientes.
+**React establece `ref.current` durante la confirmación**. Antes de actualizar el DOM, React establece los valores afectados de `ref.current` a `null`. Después de actualizar el DOM, React inmediatamente los establece en los nodos DOM correspondientes.
 
-**Generalmente, vas a acceder a las refs desde los controladores de eventos.** Si quieres hacer algo con una ref, pero no hay un evento en particular para hacerlo, es posible que necesites un Efecto. Discutiremos los Efectos en las próximas páginas.
+**Generalmente, vas a acceder a las refs desde los controladores de eventos.** Si quieres hacer algo con una ref, pero no hay un evento en particular para hacerlo, es posible que necesites un _Efecto_. Discutiremos los _Efectos_ en las próximas lecciones.
 
-#### Vaciando actualizaciones de estado sincrónicamente con flushSync
+#### ⭐ Vaciando actualizaciones de estado sincrónicamente con flushSync
+
+Considere un código como el siguiente, que agrega un nuevo _todo_ y desplaza la pantalla hasta el último hijo de la lista. **Observa cómo, por alguna razón, siempre se desplaza hacia el todo que estaba _justo antes_ del último que se ha agregado**.
 
 ```jsx
 import { useState, useRef } from 'react';
@@ -465,6 +465,7 @@ export default function TodoList() {
     const newTodo = { id: nextId++, text: text };
     setText('');
     setTodos([ ...todos, newTodo]);
+    // Esto se ejecuta antes del renderizado 👇
     listRef.current.lastChild.scrollIntoView({
       behavior: 'smooth',
       block: 'nearest'
@@ -499,7 +500,33 @@ for (let i = 0; i < 20; i++) {
 }
 ```
 
-Esto le indicará a React que actualice el DOM sincrónicamente justo después que el código envuelto en `flushSync` se ejecute. Como resultado, el último todo ya estará en el DOM en el momento que intentes desplazarte hacia él.
+Muestra:
+
+![[2-manipular-el-dom-con-refs-5.png]]
+
+Al ingresar algo en el input y pulsar en el botón, vemos cómo primero la pantalla se desliza y luego muestra la nueva tarea añadida:
+
+![[2-manipular-el-dom-con-refs-6.png]]
+
+El problema está con estas dos lineas:
+
+```js
+setTodos([ ...todos, newTodo]);
+listRef.current.lastChild.scrollIntoView();
+```
+
+**En React, [las actualizaciones de estados se ponen en cola.](https://es.react.dev/learn/queueing-a-series-of-state-updates)** Generalmente, esto es lo que quieres. Sin embargo, **aquí causa un problema porque `setTodos` no actualiza el DOM inmediatamente. Entonces, en el momento en el que desplazas la lista al último elemento, el todo aún no ha sido agregado**. Esta es la razón por la que al desplazarse siempre se «retrasa» en un elemento.
+
+**Para arreglar este problema, puedes forzar a React a actualizar («_flush_») el DOM sincrónicamente. Para hacer esto, importa `flushSync` del `react-dom` y _envuelve el actualizador de estado_ en una llamada a `flushSync`**:
+
+```jsx
+flushSync(() => {
+  setTodos([ ...todos, newTodo]);
+});
+listRef.current.lastChild.scrollIntoView();
+```
+
+**Esto le indicará a React que actualice el DOM sincrónicamente justo después que el código envuelto en `flushSync` se ejecute**. Como resultado, el último todo ya estará en el DOM en el momento que intentes desplazarte hacia él.
 
 ```jsx
 import { useState, useRef } from 'react';
@@ -514,7 +541,7 @@ export default function TodoList() {
 
   function handleAdd() {
     const newTodo = { id: nextId++, text: text };
-    flushSync(() => {
+    flushSync(() => { // 👈
       setText('');
       setTodos([ ...todos, newTodo]);      
     });
@@ -552,11 +579,11 @@ for (let i = 0; i < 20; i++) {
 }
 ```
 
-## Mejores prácticas para la manipulación del DOM con refs 
+## ⭐ Mejores prácticas para la manipulación del DOM con refs 
 
-Las refs son una vía de escape. Sólo deberías usarlas cuando tengas que «salirte de React». Ejemplos comunes de esto incluyen la gestión del foco, la posición del scroll, o una llamada a las API del navegador que React no expone.
+**Las refs son una vía de escape. Sólo deberías usarlas cuando tengas que «_salirte de React_»**. **Ejemplos comunes de esto incluyen la gestión del foco, la posición del scroll, o una llamada a las API del navegador que React no expone**.
 
-Si te limitas a acciones no destructivas como enfocar o desplazarte, no deberías encontrar ningún problema. Sin embargo, si intentas **modificar** el DOM manualmente, puedes arriesgarte a entrar en conflicto con los cambios que React está haciendo.
+Si te limitas a acciones no destructivas como enfocar o desplazarte, no deberías encontrar ningún problema. Sin embargo, **si intentas modificar el DOM manualmente, puedes arriesgarte a entrar en conflicto con los cambios que React está haciendo**.
 
 Para ilustrar este problema, este ejemplo incluye un mensaje de bienvenida y dos botones. El primer botón alterna su presencia usando [renderizado condicional](https://es.react.dev/learn/conditional-rendering) y [estado](https://es.react.dev/learn/state-a-components-memory), como normalmente lo harías en React. El segundo botón usa la [API del DOM `remove()`](https://developer.mozilla.org/en-US/docs/Web/API/Element/remove) para eliminarlo forzadamente del DOM fuera del control de React.
 
@@ -590,6 +617,30 @@ export default function Counter() {
 }
 ```
 
+Muestra:
+
+![[2-manipular-el-dom-con-refs-7.png]]
+
+Al pulsar sobre el botón "Alternar con setState" el mensaje desaparece:
+
+![[2-manipular-el-dom-con-refs-8.png]]
+
+Al volverlo a pulsar el mensaje aparece de nuevo:
+
+![[2-manipular-el-dom-con-refs-7.png]]
+
+Si ahora pulsamos sobre el botón "Eliminar del DOM" el mensaje vuelve a desaparecer:
+
+![[2-manipular-el-dom-con-refs-8.png]]
+
+Pero si ahora volvemos a pulsar en el botón "Alternar con setState" nos dará un error:
+
+![[2-manipular-el-dom-con-refs-9.png]]
+
+Al parecido pero con un diferente mensaje de error ocurre si intentamos presionar el botón "Eliminar del DOM" cuando el mensaje no esté visible al haberlo ocultado pulsando el botón "Alternar con setState":
+
+![[2-manipular-el-dom-con-refs-10.png]]
+
 Después de que hayas eliminado el elemento DOM, intentar usar `setState` para mostrarlo de nuevo provocará un fallo. Esto se debe a que has cambiado el DOM, y React no sabe cómo seguir gestionándolo correctamente.
 
 **Evita cambiar nodos DOM gestionados por React.** Modificar, agregar hijos, o eliminar hijos de elementos que son gestionados por React pueden traer resultados inconsistentes visuales o fallos como el de arriba.
@@ -604,3 +655,4 @@ Sin embargo, esto no quiere decir que no puedas en absoluto. Requiere de cuidado
 - Un componente no expone sus nodos DOM por defecto. Puedes optar por exponer un nodo DOM usando `forwardRef` y pasando el segundo argumento `ref` a un nodo específico.
 - Evita cambiar nodos DOM gestionados por React.
 - Si modificas nodos DOM gestionados por React, modifica las partes en donde React no tenga motivos para actualizar.
+
