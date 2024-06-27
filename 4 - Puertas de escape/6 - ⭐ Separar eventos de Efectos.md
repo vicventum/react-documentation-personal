@@ -515,7 +515,7 @@ Pero ahora cuando cambiamos de tema, ya no se dispara la notificación:
 
 ![[6-separar-eventos-de-efectos-4.png]]
 
-**Puedes pensar que los Eventos de Efecto son muy similares a los controladores de eventos. La principal diferencia es que los controladores de eventos se ejecutan en respuesta a las interacciones del usuario, mientras que los Eventos de Efecto son disparados por ti desde los Efectos**. Los Eventos de Efecto te permiten «romper la cadena» entre la reactividad de los Efectos y el código que no debería ser reactivo.
+==**Puedes pensar que los Eventos de Efecto son muy similares a los controladores de eventos. La principal diferencia es que los controladores de eventos se ejecutan en respuesta a las interacciones del usuario, mientras que los Eventos de Efecto son disparados por ti desde los Efectos**==. Los Eventos de Efecto te permiten «romper la cadena» entre la reactividad de los Efectos y el código que no debería ser reactivo.
 
 ### ⭐ Leer las últimas propiedades y el estado con los Eventos de Efecto
 
@@ -572,7 +572,7 @@ function Page({ url }) {
 }
 ```
 
-**Has utilizado `numberOfItems` dentro del Efecto, por lo que el linter te pide que lo añadas como dependencia. Sin embargo, _no_ quieres que la llamada a `logVisit` sea reactiva con respecto a `numberOfItems`**. Si el usuario pone algo en el carro de la compra, y el `numberOfItems` cambia, esto _no significa_ que el usuario haya visitado la página de nuevo. En otras palabras, _**visitar la página_ es, en cierto sentido, un «evento». Ocurre en un momento preciso**.
+**Has utilizado `numberOfItems` dentro del Efecto, por lo que el linter te pide que lo añadas como dependencia. Sin embargo, _no_ quieres que la llamada a `logVisit` sea reactiva con respecto a `numberOfItems`**. **Si el usuario pone algo en el carro de la compra, y el `numberOfItems` cambia, esto _no significa_ que el usuario haya visitado la página de nuevo**. En otras palabras, _**visitar la página_ es, en cierto sentido, un «evento». Ocurre en un momento preciso**.
 
 **Divide el código en dos partes**:
 
@@ -598,48 +598,49 @@ function Page({ url }) {
 
 Como resultado, se llamará a `logVisit` por cada cambio en la `url`, y siempre se leerá el último `numberOfItems`. Sin embargo, si `numberOfItems` cambia por sí mismo, esto no hará que se vuelva a ejecutar el código.
 
-> [!info]
+#### Eliminar la los argumentos del Evento de Efecto
+ 
 Puede que te preguntes si podrías llamar a `onVisit()` sin argumentos, y leer la `url` que contiene:
->
->```jsx
-  >const onVisit = useEffectEvent(() => {
-    >logVisit(url, numberOfItems); // 👈
-  >});
->
-  >useEffect(() => {
-    >onVisit(); // 👈
-  >}, [url]);
->```
->
-Esto funcionaría, pero es mejor pasar esta `url` al Evento de Efecto explícitamente. **Al pasar `url` como argumento a tu Evento de Efecto, estás diciendo que visitar una página con una `url` diferente constituye un «evento» separado desde la perspectiva del usuario.** La `visitedUrl` es una parte del «evento» que ocurrió:
->
->```jsx
-  >const onVisit = useEffectEvent(visitedUrl => { // 👈
-    >logVisit(visitedUrl, numberOfItems); // 👈
-  >});
->
-  >useEffect(() => {
-    >onVisit(url); // 👈
-  >}, [url]);
->```
->
+
+```jsx
+ const onVisit = useEffectEvent(() => {
+    logVisit(url, numberOfItems); // 👈
+ });
+
+ useEffect(() => {
+    onVisit(); // 👈
+ }, [url]);
+```
+
+Esto funcionaría, pero **es mejor pasar esta `url` al Evento de Efecto explícitamente. Al pasar `url` como argumento a tu Evento de Efecto, estás diciendo que visitar una página con una `url` diferente constituye un «evento» separado desde la perspectiva del usuario.** La `visitedUrl` es una parte del «evento» que ocurrió:
+
+```jsx
+const onVisit = useEffectEvent(visitedUrl => { // 👈
+   logVisit(visitedUrl, numberOfItems); // 👈
+});
+
+useEffect(() => {
+   onVisit(url); // 👈
+}, [url]);
+```
+
 Desde que tu Evento de Efecto «pregunta» explícitamente por la `visitedUrl`, ahora no puedes eliminar accidentalmente `url` de las dependencias del Efecto. Si eliminas la dependencia `url` (provocando que distintas visitas a la página se cuenten como una), el linter te advertirá de ello. Quieres que `onVisit` sea reactivo con respecto a la `url`, así que en lugar de leer la `url` dentro (donde no sería reactivo), la pasas _desde_ tu Efecto.
->
->Esto es especialmente importante si hay alguna lógica asíncrona dentro del Efecto:
->
->```jsx
-  >const onVisit = useEffectEvent(visitedUrl => {
-    >logVisit(visitedUrl, numberOfItems);
-  >});
->
-  >useEffect(() => {
-    >setTimeout(() => {
-      >onVisit(url);
-    >}, 5000); // Retraso en el registro de visitas
-  >}, [url]);
->```
->
->Aquí, `url` dentro de `onVisit` corresponde a la _última_ `url` (que podría haber cambiado), pero `visitedUrl` corresponde a la `url` que originalmente causó que este Efecto (y esta llamada a `onVisit`) se ejecutara.
+
+Esto es especialmente importante si hay alguna lógica asíncrona dentro del Efecto:
+
+```jsx
+const onVisit = useEffectEvent(visitedUrl => {
+  logVisit(visitedUrl, numberOfItems);
+});
+
+useEffect(() => {
+  setTimeout(() => {
+    onVisit(url);
+  }, 5000); // Retraso en el registro de visitas
+}, [url]);
+```
+
+Aquí, `url` dentro de `onVisit` corresponde a la _última_ `url` (que podría haber cambiado), pero `visitedUrl` corresponde a la `url` que originalmente causó que este Efecto (y esta llamada a `onVisit`) se ejecutara.
 
 #### ¿Está bien suprimir el linter de dependencia en su lugar? 
 
@@ -818,7 +819,7 @@ function useTimer(callback, delay) {
 }
 ```
 
-En su lugar, declare siempre los Eventos de Efecto directamente junto a los Efectos que los utilizan:
+**En su lugar, declare siempre los Eventos de Efecto directamente junto a los Efectos que los utilizan**:
 
 ```jsx
 function Timer() {
