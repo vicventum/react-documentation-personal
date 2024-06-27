@@ -625,63 +625,169 @@ function Child({ data }) {
 
 Esto es más simple y mantiene el flujo de datos predecible: los datos fluyen hacia abajo desde el padre hacia el hijo.
 
-### Suscripción a un almacén externo [](https://es.react.dev/learn/you-might-not-need-an-effect#subscribing-to-an-external-store "Link for Suscripción a un almacén externo")
+### ⭐ `useSyncExternalStore` - Suscripción a un almacén externo
 
-A veces, tus componentes pueden necesitar suscribirse a algunos datos fuera del estado de React. Estos datos podrían provenir de una biblioteca de terceros o de una API incorporada en el navegador. Dado que estos datos pueden cambiar sin que React lo sepa, es necesario suscribir manualmente tus componentes a ellos. Esto se hace frecuentemente con un Efecto, por ejemplo:
+**A veces, tus componentes pueden necesitar suscribirse a algunos datos fuera del estado de React**. Estos datos podrían provenir de una biblioteca de terceros o de una API incorporada en el navegador. **Dado que estos datos pueden cambiar sin que React lo sepa, es necesario suscribir manualmente tus componentes a ellos. Esto se hace frecuentemente con un Efecto, por ejemplo**:
 
+```jsx
+function useOnlineStatus() {
+  // No es lo ideal: Suscripción manual a un almacén en un Efecto.
+  const [isOnline, setIsOnline] = useState(true); // 👈
+  useEffect(() => { // 👈
+    function updateState() {
+      setIsOnline(navigator.onLine);
+    }
+
+    updateState(); // 👈
+
+    window.addEventListener('online', updateState); // 👈
+    window.addEventListener('offline', updateState); // 👈
+    return () => {
+      window.removeEventListener('online', updateState); // 👈
+      window.removeEventListener('offline', updateState); // 👈
+    };
+  }, []); // 👈
+  return isOnline;
+}
+
+function ChatIndicator() {
+  const isOnline = useOnlineStatus();
+  // ...
+}
 ```
-function useOnlineStatus() {  // No es lo ideal: Suscripción manual a un almacén en un Efecto.  const [isOnline, setIsOnline] = useState(true);  useEffect(() => {    function updateState() {      setIsOnline(navigator.onLine);    }    updateState();    window.addEventListener('online', updateState);    window.addEventListener('offline', updateState);    return () => {      window.removeEventListener('online', updateState);      window.removeEventListener('offline', updateState);    };  }, []);  return isOnline;}function ChatIndicator() {  const isOnline = useOnlineStatus();  // ...}
+
+Aquí, el componente se suscribe a un almacén de datos externos (en este caso, la API `navigator.onLine` del navegador). Dado que esta API no existe en el servidor (por lo que no se puede utilizar para el HTML inicial), inicialmente el estado se establece en `true`. **Cada vez que el valor de ese almacén de datos cambia en el navegador, el componente actualiza su estado**.
+
+**Aunque es común utilizar Efectos para esto, React tiene un Hook específicamente diseñado para suscribirse a un almacén de datos externos que se prefiere en su lugar. Elimina el Efecto y reemplázalo con una llamada a [`useSyncExternalStore`](https://es.react.dev/reference/react/useSyncExternalStore)**:
+
+```jsx
+function subscribe(callback) {
+  window.addEventListener('online', callback);
+  window.addEventListener('offline', callback);
+  return () => {
+    window.removeEventListener('online', callback);
+    window.removeEventListener('offline', callback);
+  };
+}
+
+function useOnlineStatus() {
+  // ✅ Bien: Suscribirse a un almacén externo con un Hook incorporado.
+  return useSyncExternalStore( // 👈
+    subscribe, // React no volverá a suscribirse mientras pases la misma función.👈
+    () => navigator.onLine, // Cómo obtener el valor en el cliente. // 👈
+    () => true // Cómo obtener el valor en el servidor. // 👈
+  );
+}
+
+function ChatIndicator() {
+  const isOnline = useOnlineStatus();
+  // ...
+}
 ```
 
-Aquí, el componente se suscribe a un almacén de datos externos (en este caso, la API `navigator.onLine` del navegador). Dado que esta API no existe en el servidor (por lo que no se puede utilizar para el HTML inicial), inicialmente el estado se establece en `true`. Cada vez que el valor de ese almacén de datos cambia en el navegador, el componente actualiza su estado.
+Este enfoque es menos propenso a errores que la sincronización manual de datos mutables al estado de React con un Efecto. **Típicamente, escribirás un Hook personalizado como `useOnlineStatus()` como se muestra arriba, para que no necesites repetir este código en los componentes individuales**. [Lee más sobre cómo suscribirte a almacenes externos desde componentes React.](https://es.react.dev/reference/react/useSyncExternalStore)
 
-Aunque es común utilizar Efectos para esto, React tiene un Hook específicamente diseñado para suscribirse a un almacén de datos externos que se prefiere en su lugar. Elimina el Efecto y reemplázalo con una llamada a [`useSyncExternalStore`](https://es.react.dev/reference/react/useSyncExternalStore):
-
-```
-function subscribe(callback) {  window.addEventListener('online', callback);  window.addEventListener('offline', callback);  return () => {    window.removeEventListener('online', callback);    window.removeEventListener('offline', callback);  };}function useOnlineStatus() {  // ✅ Bien: Suscribirse a un almacén externo con un Hook incorporado.  return useSyncExternalStore(    subscribe, // React no volverá a suscribirse mientras pases la misma función.    () => navigator.onLine, // Cómo obtener el valor en el cliente.    () => true // Cómo obtener el valor en el servidor.  );}function ChatIndicator() {  const isOnline = useOnlineStatus();  // ...}
-```
-
-Este enfoque es menos propenso a errores que la sincronización manual de datos mutables al estado de React con un Efecto. Típicamente, escribirás un Hook personalizado como `useOnlineStatus()` como se muestra arriba, para que no necesites repetir este código en los componentes individuales. [Lee más sobre cómo suscribirte a almacenes externos desde componentes React.](https://es.react.dev/reference/react/useSyncExternalStore)
-
-### Obtención de datos [](https://es.react.dev/learn/you-might-not-need-an-effect#fetching-data "Link for Obtención de datos")
+### ⭐ Obtención de datos
 
 Muchas aplicaciones utilizan Efectos para iniciar la obtención de datos. Es bastante común escribir un Efecto para obtener datos de esta manera:
 
-```
-function SearchResults({ query }) {  const [results, setResults] = useState([]);  const [page, setPage] = useState(1);  useEffect(() => {    // 🔴 Evitar: Obtener datos sin lógica de limpieza.    fetchResults(query, page).then(json => {      setResults(json);    });  }, [query, page]);  function handleNextPageClick() {    setPage(page + 1);  }  // ...}
+```jsx
+function SearchResults({ query }) {
+  const [results, setResults] = useState([]);
+  const [page, setPage] = useState(1);
+
+  useEffect(() => { // 👈
+    // 🔴 Evitar: Obtener datos sin lógica de limpieza.
+    fetchResults(query, page).then(json => // 👈 { // 👈
+      setResults(json);
+    });
+  }, [query, page]); // 👈
+
+  function handleNextPageClick() {
+    setPage(page + 1);
+  }
+  // ...
+}
 ```
 
 No _necesitas_ mover esta solicitud (_fetch_) a un controlador de eventos.
 
 Esto puede parecer una contradicción con los ejemplos anteriores donde necesitabas poner la lógica en los controladores de eventos. Sin embargo, considera que no es _el evento de escritura_ la razón principal para realizar la solicitud (_fetch_). Los campos de búsqueda a menudo se precargan desde la URL, y el usuario podría navegar hacia atrás y adelante sin tocar el campo de búsqueda.
 
-No importa de dónde provengan `page` y `query`. Mientras este componente sea visible, deseas mantener `results` [sincronizado](https://es.react.dev/learn/synchronizing-with-effects) con los datos de la red para la `page` y `query` actuales. Por eso es un Efecto.
+**No importa de dónde provengan `page` y `query`. Mientras este componente sea visible, deseas mantener `results` [sincronizado](https://es.react.dev/learn/synchronizing-with-effects) con los datos de la red para la `page` y `query` actuales. Por eso es un Efecto**.
 
-Sin embargo, el código anterior tiene un error. Imagina que escribes «hola» rápidamente. Entonces la `query` cambiará de «h», a «ho», «hol», y «hola». Esto iniciará búsquedas separadas, pero no hay garantía sobre el orden en que llegarán las respuestas. Por ejemplo, la respuesta «hol» puede llegar _después_ de la respuesta «hola». Como «hol» llamará a `setResults()` al final, estarás mostrando los resultados de búsqueda incorrectos. Esto se llama una [«condición de carrera»](https://es.wikipedia.org/wiki/Condici%C3%B3n_de_carrera): dos solicitudes diferentes «compitieron» entre sí y llegaron en un orden diferente al que esperabas.
+**Sin embargo, el código anterior tiene un error. Imagina que escribes «hola» rápidamente. Entonces la `query` cambiará de «h», a «ho», «hol», y «hola». Esto iniciará búsquedas separadas, pero no hay garantía sobre el orden en que llegarán las respuestas**. Por ejemplo, la respuesta «hol» puede llegar _después_ de la respuesta «hola». Como «hol» llamará a `setResults()` al final, estarás mostrando los resultados de búsqueda incorrectos. Esto se llama una [«condición de carrera»](https://es.wikipedia.org/wiki/Condici%C3%B3n_de_carrera): dos solicitudes diferentes «compitieron» entre sí y llegaron en un orden diferente al que esperabas.
 
 **Para solucionar la condición de carrera, necesitas [agregar una función de limpieza](https://es.react.dev/learn/synchronizing-with-effects#fetching-data) para ignorar respuestas obsoletas:**
 
-```
-function SearchResults({ query }) {  const [results, setResults] = useState([]);  const [page, setPage] = useState(1);  useEffect(() => {    let ignore = false;    fetchResults(query, page).then(json => {      if (!ignore) {        setResults(json);      }    });    return () => {      ignore = true;    };  }, [query, page]);  function handleNextPageClick() {    setPage(page + 1);  }  // ...}
+```jsx
+function SearchResults({ query }) {
+  const [results, setResults] = useState([]);
+  const [page, setPage] = useState(1);
+  useEffect(() => {
+    let ignore = false; // 👈
+    fetchResults(query, page).then(json => {
+      if (!ignore) { // 👈
+        setResults(json);
+      }
+    });
+    return () => { // 👈
+      ignore = true; // 👈
+    };
+  }, [query, page]);
+
+  function handleNextPageClick() {
+    setPage(page + 1);
+  }
+  // ...
+}
 ```
 
-Esto asegura que cuando tu Efecto obtiene datos, todas las respuestas excepto la última solicitada serán ignoradas.
+**Esto asegura que cuando tu Efecto obtiene datos, todas las respuestas excepto la última solicitada serán ignoradas**.
 
 Manejar las condiciones de carrera no es la única dificultad al implementar la obtención de datos. También podrías considerar el almacenamiento en caché de las respuestas (para que el usuario pueda hacer clic en «Atrás» y ver la pantalla anterior instantáneamente), cómo obtener datos en el servidor (para que el HTML renderizado inicialmente por el servidor contenga el contenido obtenido en lugar de un indicador de carga (_spinner_)), y cómo evitar cascadas de red (para que un hijo pueda obtener datos sin tener que esperar por cada padre).
 
 **Estos problemas aplican a cualquier biblioteca de UI, no solo a React. Resolverlos no es trivial, por eso los [frameworks](https://es.react.dev/learn/start-a-new-react-project#production-grade-react-frameworks) modernos ofrecen mecanismos incorporados más eficientes de obtención de datos que obtener datos en Efectos.**
 
-Si no utilizas un framework (y no quieres construir el tuyo propio) pero te gustaría hacer que la obtención de datos desde Efectos sea más cómoda, considera extraer tu lógica de obtención de datos en un Hook personalizado, como en este ejemplo:
+Si no utilizas un framework (y no quieres construir el tuyo propio) pero **te gustaría hacer que la obtención de datos desde Efectos sea más cómoda, considera extraer tu lógica de obtención de datos en un Hook personalizado**, como en este ejemplo:
 
-```
-function SearchResults({ query }) {  const [page, setPage] = useState(1);  const params = new URLSearchParams({ query, page });  const results = useData(`/api/search?${params}`);  function handleNextPageClick() {    setPage(page + 1);  }  // ...}function useData(url) {  const [data, setData] = useState(null);  useEffect(() => {    let ignore = false;    fetch(url)      .then(response => response.json())      .then(json => {        if (!ignore) {          setData(json);        }      });    return () => {      ignore = true;    };  }, [url]);  return data;}
+```jsx
+function SearchResults({ query }) {
+  const [page, setPage] = useState(1);
+  const params = new URLSearchParams({ query, page });
+  const results = useData(`/api/search?${params}`);
+
+  function handleNextPageClick() {
+    setPage(page + 1);
+  }
+  // ...
+}
+
+function useData(url) {
+  const [data, setData] = useState(null);
+  useEffect(() => {
+    let ignore = false;
+    fetch(url)
+      .then(response => response.json())
+      .then(json => {
+        if (!ignore) {
+          setData(json);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [url]);
+  return data;
+}
 ```
 
 Probablemente también querrás agregar lógica para el manejo de errores y para rastrear si el contenido está cargando. Puedes construir un Hook como este por ti mismo o utilizar una de las muchas soluciones ya disponibles en el ecosistema de React. **Aunque por sí solo esto no será tan eficiente como usar el mecanismo incorporado de obtención de datos de un framework, al mover la lógica de obtención de datos a un Hook personalizado, será más fácil adoptar una estrategia eficiente de obtención de datos más adelante.**
 
-En general, cada vez que te veas obligado a escribir Efectos, mantén un ojo para identificar cuándo puedes extraer una funcionalidad en un Hook personalizado con una API más declarativa y específica, como `useData` mencionado anteriormente. Cuantas menos llamadas directas a `useEffect` tengas en tus componentes, más fácil te resultará mantener tu aplicación.
+> [!tip]
+>En general, cada vez que te veas obligado a escribir Efectos, mantén un ojo para identificar cuándo puedes extraer una funcionalidad en un Hook personalizado con una API más declarativa y específica, como `useData` mencionado anteriormente. Cuantas menos llamadas directas a `useEffect` tengas en tus componentes, más fácil te resultará mantener tu aplicación.
 
-## Recapitulación[](https://es.react.dev/learn/you-might-not-need-an-effect#recap "Link for Recapitulación")
+## Recapitulación
 
 - Si puedes calcular algo durante el renderizado, no necesitas un Efecto.
 - Para almacenar en caché cálculos costosos, utiliza `useMemo` en lugar de `useEffect`.
